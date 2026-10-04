@@ -50,14 +50,34 @@ FLOW_PER_DAY = 50_000
 class Candidate:
     name: str
     system: str
-    body: Dict[str, Any] = field(default_factory=dict)  # добавка к запросу
+    body: Dict[str, Any] = field(default_factory=dict)
     max_tokens: int = 16
+    examples: List[Dict[str, str]] = field(default_factory=list)
 
+FEW_SHOT = [
+    {
+        "role": "user",
+        "content": "При запросе к API на создание возврата получаем ошибку 409. Как правильно повторять запрос?",
+    },
+    {
+        "role": "assistant",
+        "content": "интеграция",
+    },
+    {
+        "role": "user",
+        "content": "Когда перечислите выручку магазина на расчётный счёт и есть ли комиссия за вывод?",
+    },
+    {
+        "role": "assistant",
+        "content": "тарифы",
+    },
+]
 
 CANDIDATES = [
     Candidate("короткая постановка", SHORT),
     Candidate("постановка с правилами", DETAILED),
     Candidate("правила + рассуждение", DETAILED, body=THINKING, max_tokens=2048),
+    Candidate("правила + примеры", DETAILED, examples=FEW_SHOT),
 ]
 
 
@@ -75,9 +95,10 @@ class Row:
 
 
 def prompt(cand: Candidate, row: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Постановка кандидата и текст обращения"""
+    """Постановка кандидата, примеры и текст обращения"""
     return [
         {"role": "system", "content": cand.system},
+        *cand.examples,
         {"role": "user", "content": row["text"]},
     ]
 
