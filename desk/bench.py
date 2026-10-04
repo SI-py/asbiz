@@ -170,6 +170,7 @@ def summarize(
         "p50, с": percentile(latencies, 0.5),
         "p95, с": percentile(latencies, 0.95),
         "первый токен p50, с": percentile(ttfts, 0.5),
+        "входных токенов на обращение": per(total.input_tokens),
         "токенов на обращение": per(total.total_tokens),
         "взвешенных на обращение": per(total.weighted),
         "цена за 1000, у.е.": 1000 * per(total.cost),
