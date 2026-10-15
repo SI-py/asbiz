@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import datetime
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -92,6 +93,7 @@ class Row:
     latency_s: float = 0.0
     ttft_s: Optional[float] = None
     usage: Usage = field(default_factory=Usage)
+    category: Optional[str] = None
 
 
 def prompt(cand: Candidate, row: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -145,6 +147,7 @@ async def run_candidate(
             latency_s=res.total_s,
             ttft_s=res.ttft_s,
             usage=res.usage,
+            category=parse_category(res.text),
         )
 
     return list(await asyncio.gather(*(one(r) for r in rows)))
@@ -190,6 +193,24 @@ def table(rows: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def error_report(name: str, rows: List[Dict[str, Any]], results: List[Row]) -> str:
+    """Сохраняет конкретные ошибки, чтобы их можно было разобрать в отчёте."""
+    wrong = [(r, t) for r, t in zip(rows, results) if not t.ok]
+    lines = ["## Ошибки: %s" % name, ""]
+    if not wrong:
+        return "\n".join(lines + ["Ошибок нет."])
+    lines += ["| обращение | эталон | ответ |", "|---|---|---|"]
+    pairs = Counter()
+    for row, result in wrong:
+        answer = "сбой" if result.failed else (result.category or "нет категории")
+        gold = row["gold"]["category"]
+        lines.append("| %s | %s | %s |" % (row["id"], gold, answer))
+        pairs[(gold, answer)] += 1
+    lines += ["", "; ".join("%s → %s: %d" % (g, a, n)
+                              for (g, a), n in pairs.items()) + "."]
+    return "\n".join(lines)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -211,11 +232,12 @@ def main() -> None:
             await run_candidate(llm, cand, rows, args.concurrency) for cand in chosen
         ]
 
-    results, spent = [], 0.0
+    results, errors, spent = [], [], 0.0
     for cand, done in zip(chosen, asyncio.run(run_all())):
         spent += sum(r.usage.weighted for r in done)
         results.append(summarize(cand.name, done, args.flow))
-    report = table(results)
+        errors.append(error_report(cand.name, rows, done))
+    report = table(results) + "\n\n" + "\n\n".join(errors)
     print(report)
     footer = (
         "\nМодель %s, обращений %d, прогноз на %d обращений в день. "
